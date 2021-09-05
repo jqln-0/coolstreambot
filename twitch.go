@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"hash/crc32"
 	"log"
 	"math/rand"
@@ -85,6 +86,14 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 			cmd.Env = os.Environ()
 			cmd.Env = append(cmd.Env, "AUDIODEV=hw:1,0")
 			go cmd.Run()
+		} else if reward == "scrollo" {
+			f, err := os.Create("scrollo.txt")
+			defer f.Close()
+			if err != nil {
+				log.Printf("failed to create file: %s", err)
+				return
+			}
+			f.WriteString(fmt.Sprintf(" %.256s ✨✨✨ ", params))
 		}
 		return
 	}
