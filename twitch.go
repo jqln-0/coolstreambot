@@ -70,6 +70,9 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		} else if reward == "end the stream" {
 			cmd := exec.Command("killall", "obs")
 			cmd.Run()
+		} else if reward == "silence me" {
+			cmd := exec.Command("./silencethot.sh")
+			go cmd.Run()
 		} else if reward == "SimpBucks Premium" {
 			chance := rand.Intn(10)
 			sound := "woof.mp3"
