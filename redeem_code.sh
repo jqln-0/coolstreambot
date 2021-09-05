@@ -1,0 +1,1 @@
+curl -X POST "https://id.twitch.tv/oauth2/token?client_id=$client_id&client_secret=$client_secret&code=itimplq0o6bxhgsn9369bbte58pa1k&grant_type=authorization_code&redirect_uri=http://localhost/" > token
