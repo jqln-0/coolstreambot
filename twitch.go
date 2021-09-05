@@ -68,9 +68,11 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 			log.Printf("setting bulb %d to %d", whichBulb, hue)
 			bulb.SetColorState(col, 1)
 		} else if reward == "end the stream" {
+			log.Print("killing stream")
 			cmd := exec.Command("killall", "obs")
 			cmd.Run()
 		} else if reward == "silence me" {
+			log.Print("ur muted")
 			cmd := exec.Command("./silencethot.sh")
 			go cmd.Run()
 		} else if reward == "SimpBucks Premium" {
