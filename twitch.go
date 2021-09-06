@@ -1,15 +1,24 @@
 package main
 
 import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"hash/crc32"
+	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 
 	"github.com/2tvenom/golifx"
 )
@@ -30,14 +39,70 @@ type PayloadJson struct {
 
 var ceilingBulb, bedBulb *golifx.Bulb
 
+func verifyWebhook(r *http.Request, requestBody []byte, hmacKey []byte) bool {
+	signatureList, ok := r.Header["X-Hub-Signature"]
+	if !ok {
+		log.Println("missing signature")
+		return false
+	}
+	if len(signatureList) != 1 {
+		log.Println("multiple signatures")
+		return false
+	}
+	splitSignature := strings.SplitN(signatureList[0], "=", 2)
+	if len(splitSignature) != 2 {
+		log.Println("malformed signature")
+		return false
+	}
+
+	method, hexSignature := splitSignature[0], splitSignature[1]
+	signature, err := hex.DecodeString(hexSignature)
+	if err != nil {
+		log.Println("malformed signature: could not decode hex")
+		return false
+	}
+
+	var hasher func() hash.Hash
+	switch method {
+	case "sha1":
+		hasher = sha1.New
+	case "sha256":
+		hasher = sha256.New
+	case "sha384":
+		hasher = sha512.New384
+	case "sha512":
+		hasher = sha512.New
+	default:
+		log.Println("unknown signature algorithm", method)
+		return false
+	}
+
+	hmac := hmac.New(hasher, hmacKey)
+	hmac.Write(requestBody)
+	expectedMAC := hmac.Sum(nil)
+	return bytes.Equal(expectedMAC, signature)
+}
+
 func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	msgType, ok := r.Header["Twitch-Eventsub-Message-Type"]
 	if !ok {
 		log.Println("missing message type", r.Header)
 		return
 	}
+	requestBody, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		log.Println("failed to read body", err)
+		return
+	}
+
+	hmacKey := []byte(os.Getenv("sub_secret"))
+	if !verifyWebhook(r, requestBody, hmacKey) {
+		log.Println("failed to verify signature")
+		return
+	}
+
 	var payload PayloadJson
-	err := json.NewDecoder(r.Body).Decode(&payload)
+	err = json.NewDecoder(bytes.NewReader(requestBody)).Decode(&payload)
 	if err != nil {
 		log.Println("bad body", err)
 		return
