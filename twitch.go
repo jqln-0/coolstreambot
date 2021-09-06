@@ -8,6 +8,7 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash"
 	"hash/crc32"
@@ -39,17 +40,24 @@ type PayloadJson struct {
 
 var ceilingBulb, bedBulb *golifx.Bulb
 
-func verifyWebhook(r *http.Request, requestBody []byte, hmacKey []byte) bool {
-	signatureList, ok := r.Header["X-Hub-Signature"]
+func getCoolHeader(name string, r *http.Request) (string, error) {
+	val, ok := r.Header[name]
 	if !ok {
-		log.Println("missing signature")
+		return "", fmt.Errorf("missing header %s", name)
+	}
+	if len(val) != 1 {
+		return "", errors.New("too many headers")
+	}
+	return val[0], nil
+}
+
+func verifyWebhook(r *http.Request, requestBody []byte, hmacKey []byte) bool {
+	signatures, err := getCoolHeader("Twitch-Eventsub-Message-Signature", r)
+	if err != nil {
+		log.Println(err)
 		return false
 	}
-	if len(signatureList) != 1 {
-		log.Println("multiple signatures")
-		return false
-	}
-	splitSignature := strings.SplitN(signatureList[0], "=", 2)
+	splitSignature := strings.SplitN(signatures, "=", 2)
 	if len(splitSignature) != 2 {
 		log.Println("malformed signature")
 		return false
@@ -77,18 +85,27 @@ func verifyWebhook(r *http.Request, requestBody []byte, hmacKey []byte) bool {
 		return false
 	}
 
+	timestamp, err := getCoolHeader("Twitch-Eventsub-Message-Timestamp", r)
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+
+	msgId, err := getCoolHeader("Twitch-Eventsub-Message-Id", r)
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+
 	hmac := hmac.New(hasher, hmacKey)
+	hmac.Write([]byte(msgId))
+	hmac.Write([]byte(timestamp))
 	hmac.Write(requestBody)
 	expectedMAC := hmac.Sum(nil)
 	return bytes.Equal(expectedMAC, signature)
 }
 
 func handleWebhook(w http.ResponseWriter, r *http.Request) {
-	msgType, ok := r.Header["Twitch-Eventsub-Message-Type"]
-	if !ok {
-		log.Println("missing message type", r.Header)
-		return
-	}
 	requestBody, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		log.Println("failed to read body", err)
@@ -98,6 +115,13 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	hmacKey := []byte(os.Getenv("sub_secret"))
 	if !verifyWebhook(r, requestBody, hmacKey) {
 		log.Println("failed to verify signature")
+		w.Write([]byte("you're my good puppy\n"))
+		return
+	}
+
+	msgType, err := getCoolHeader("Twitch-Eventsub-Message-Type", r)
+	if err != nil {
+		log.Println(err)
 		return
 	}
 
@@ -107,12 +131,12 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		log.Println("bad body", err)
 		return
 	}
-	if msgType[0] == "webhook_callback_verification" {
+	if msgType == "webhook_callback_verification" {
 		log.Printf("got verification callback, challenge %s", payload.Challenge)
 		w.Write([]byte(payload.Challenge))
 		return
 	}
-	if msgType[0] == "notification" {
+	if msgType == "notification" {
 		reward := payload.Event.Reward.Title
 		params := payload.Event.UserInput
 		if reward == "lights" {
