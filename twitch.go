@@ -102,7 +102,15 @@ func verifyWebhook(r *http.Request, requestBody []byte, hmacKey []byte) bool {
 	hmac.Write([]byte(timestamp))
 	hmac.Write(requestBody)
 	expectedMAC := hmac.Sum(nil)
-	return bytes.Equal(expectedMAC, signature)
+	ret := true
+	//don't bail before checking all the bytes, it leads to a timing attack
+	for i := range(signature) {
+		if expectedMAC[i] != signature[i] {
+			ret = false
+			log.Printf("byte %d didn't match\n", i)
+		}
+	}
+	return ret
 }
 
 func handleWebhook(w http.ResponseWriter, r *http.Request) {
