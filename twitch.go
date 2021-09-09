@@ -181,11 +181,11 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 			go cmd.Run()
 		} else if reward == "scrollo" {
 			f, err := os.Create("scrollo.txt")
-			defer f.Close()
 			if err != nil {
 				log.Printf("failed to create file: %s", err)
 				return
 			}
+			defer f.Close()
 			f.WriteString(fmt.Sprintf(" %.256s ✨✨✨ ", params))
 		}
 		return
