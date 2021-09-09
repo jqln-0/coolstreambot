@@ -97,11 +97,11 @@ func verifyWebhook(r *http.Request, requestBody []byte, hmacKeys [][]byte) bool 
 		return false
 	}
 	for _, hmacKey := range hmacKeys {
-		hmac := hmac.New(hasher, hmacKey)
-		hmac.Write([]byte(msgId))
-		hmac.Write([]byte(timestamp))
-		hmac.Write(requestBody)
-		expectedMAC := hmac.Sum(nil)
+		calculatedHMAC := hmac.New(hasher, hmacKey)
+		calculatedHMAC.Write([]byte(msgId))
+		calculatedHMAC.Write([]byte(timestamp))
+		calculatedHMAC.Write(requestBody)
+		expectedMAC := calculatedHMAC.Sum(nil)
 		if hmac.Equal(expectedMAC, signature) {
 			return true
 		}
