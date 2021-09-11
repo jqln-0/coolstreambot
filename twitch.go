@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -39,6 +40,8 @@ type PayloadJson struct {
 }
 
 var ceilingBulb, bedBulb *golifx.Bulb
+
+var obsScrolloFile = "scrollo.txt"
 
 func getCoolHeader(name string, r *http.Request) (string, error) {
 	val, ok := r.Header[name]
@@ -180,13 +183,28 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 			cmd.Env = append(cmd.Env, "AUDIODEV=hw:1,0")
 			go cmd.Run()
 		} else if reward == "scrollo" {
-			f, err := os.Create("scrollo.txt")
-			if err != nil {
-				log.Printf("failed to create file: %s", err)
+			hasher := crc32.NewIEEE()
+			hasher.Write([]byte(params))
+			scrolloHash := strconv.FormatUint(uint64(hasher.Sum32()), 10)
+			scrolloFile := filepath.Join(".scrollocache/", scrolloHash)
+			if _, err := os.Stat(scrolloFile); os.IsNotExist(err) {
+				// only create the file if it doesn't exist
+				f, err := os.Create(scrolloFile)
+				if err != nil {
+					log.Printf("failed to create file: %s", err)
+					return
+				}
+				defer f.Close()
+				f.WriteString(fmt.Sprintf(" %.256s ✨✨✨ ", params))
+			} else if err != nil {
+				log.Printf("file in unknown state: %s", err)
 				return
 			}
-			defer f.Close()
-			f.WriteString(fmt.Sprintf(" %.256s ✨✨✨ ", params))
+			err = os.Link(scrolloFile, obsScrolloFile)
+			if err != nil {
+				log.Printf("failed to link file: %s", err)
+				return
+			}
 		}
 		return
 	}
