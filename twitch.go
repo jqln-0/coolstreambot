@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/2tvenom/golifx"
+	"golang.org/x/sync/errgroup"
 )
 
 type RewardJson struct {
@@ -122,7 +123,11 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	hmacKeys := [][]byte{[]byte(os.Getenv("dom_secret")), []byte(os.Getenv("sub_secret"))}
 	if !verifyWebhook(r, requestBody, hmacKeys) {
 		log.Println("failed to verify signature")
-		w.Write([]byte("you're my good puppy\n"))
+		_, err := w.Write([]byte("you're my good puppy\n"))
+		if err != nil {
+			log.Printf("failed to call kathryn a good puppy: %s", err)
+			return
+		}
 		return
 	}
 
@@ -140,12 +145,17 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	if msgType == "webhook_callback_verification" {
 		log.Printf("got verification callback, challenge %s", payload.Challenge)
-		w.Write([]byte(payload.Challenge))
+		_, err := w.Write([]byte(payload.Challenge))
+		if err != nil {
+			log.Printf("failed to write webhook challenge: %s", err)
+			return
+		}
 		return
 	}
 	if msgType == "notification" {
 		reward := payload.Event.Reward.Title
 		params := payload.Event.UserInput
+		asyncErrs := new(errgroup.Group)
 		if reward == "lights" {
 			number, err := strconv.ParseUint(params, 10, 64)
 			if err != nil {
@@ -163,15 +173,19 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 				Kelvin:     3200,
 			}
 			log.Printf("setting bulb %d to %d", whichBulb, hue)
-			bulb.SetColorState(col, 1)
+			err = bulb.SetColorState(col, 1)
+			if err != nil {
+				log.Printf("failed to set color light color state: %s", err)
+				return
+			}
 		} else if reward == "end the stream" {
 			log.Print("killing stream")
 			cmd := exec.Command("killall", "obs")
-			cmd.Run()
+			asyncErrs.Go(cmd.Run)
 		} else if reward == "silence me" {
 			log.Print("ur muted")
 			cmd := exec.Command("./silencethot.sh")
-			go cmd.Run()
+			asyncErrs.Go(cmd.Run)
 		} else if reward == "SimpBucks Premium" {
 			chance := rand.Intn(10)
 			sound := "woof.mp3"
@@ -181,7 +195,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 			cmd := exec.Command("play", sound)
 			cmd.Env = os.Environ()
 			cmd.Env = append(cmd.Env, "AUDIODEV=hw:1,0")
-			go cmd.Run()
+			asyncErrs.Go(cmd.Run)
 		} else if reward == "scrollo" {
 			hasher := crc32.NewIEEE()
 			hasher.Write([]byte(params))
@@ -195,7 +209,12 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				defer f.Close()
-				f.WriteString(fmt.Sprintf(" %.256s ✨✨✨ ", params))
+				_, err = f.WriteString(fmt.Sprintf(" %.256s ✨✨✨ ", params))
+				if err != nil {
+					log.Printf("failed to cwrite text to scrollogfile: %s", err)
+					return
+				}
+
 			} else if err != nil {
 				log.Printf("file in unknown state: %s", err)
 				return
@@ -205,6 +224,10 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 				log.Printf("failed to link file: %s", err)
 				return
 			}
+		}
+		if err := asyncErrs.Wait(); err != nil {
+			log.Printf("async failure first err:, %s", err)
+			return
 		}
 		return
 	}
