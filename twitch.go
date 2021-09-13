@@ -3,14 +3,11 @@ package main
 import (
 	"bytes"
 	"crypto/hmac"
-	"crypto/sha1"
 	"crypto/sha256"
-	"crypto/sha512"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash"
 	"hash/crc32"
 	"io/ioutil"
 	"log"
@@ -96,25 +93,10 @@ func verifyWebhook(r *http.Request, requestBody []byte, hmacKeys []hmacKey) []re
 		return nil
 	}
 
-	method, hexSignature := splitSignature[0], splitSignature[1]
+	hexSignature := splitSignature[1]
 	signature, err := hex.DecodeString(hexSignature)
 	if err != nil {
 		log.Println("malformed signature: could not decode hex")
-		return nil
-	}
-
-	var hasher func() hash.Hash
-	switch method {
-	case "sha1":
-		hasher = sha1.New
-	case "sha256":
-		hasher = sha256.New
-	case "sha384":
-		hasher = sha512.New384
-	case "sha512":
-		hasher = sha512.New
-	default:
-		log.Println("unknown signature algorithm", method)
 		return nil
 	}
 
@@ -130,7 +112,7 @@ func verifyWebhook(r *http.Request, requestBody []byte, hmacKeys []hmacKey) []re
 		return nil
 	}
 	for _, hmacKey := range hmacKeys {
-		calculatedHMAC := hmac.New(hasher, hmacKey.secret)
+		calculatedHMAC := hmac.New(sha256.New, hmacKey.secret)
 		calculatedHMAC.Write([]byte(msgId))
 		calculatedHMAC.Write([]byte(timestamp))
 		calculatedHMAC.Write(requestBody)
