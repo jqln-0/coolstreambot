@@ -38,6 +38,39 @@ type PayloadJson struct {
 	Event     EventJson `json:"event"`
 }
 
+type reward int8
+
+const (
+	lights reward = iota
+	endStream
+	silenceMe
+	premium
+	scrollo
+	unknown
+)
+
+func rewardFromString(s string) reward {
+	switch s {
+	case "lights":
+		return lights
+	case "end the stream":
+		return endStream
+	case "silence me":
+		return silenceMe
+	case "SimpBucks Premium":
+		return premium
+	case "scrollo":
+		return scrollo
+	default:
+		return unknown
+	}
+}
+
+type hmacKey struct {
+	secret      []byte
+	permissions []reward
+}
+
 var ceilingBulb, bedBulb *golifx.Bulb
 
 func getCoolHeader(name string, r *http.Request) (string, error) {
@@ -51,23 +84,23 @@ func getCoolHeader(name string, r *http.Request) (string, error) {
 	return val[0], nil
 }
 
-func verifyWebhook(r *http.Request, requestBody []byte, hmacKeys [][]byte) bool {
+func verifyWebhook(r *http.Request, requestBody []byte, hmacKeys []hmacKey) []reward {
 	signatures, err := getCoolHeader("Twitch-Eventsub-Message-Signature", r)
 	if err != nil {
 		log.Println(err)
-		return false
+		return nil
 	}
 	splitSignature := strings.SplitN(signatures, "=", 2)
 	if len(splitSignature) != 2 {
 		log.Println("malformed signature")
-		return false
+		return nil
 	}
 
 	method, hexSignature := splitSignature[0], splitSignature[1]
 	signature, err := hex.DecodeString(hexSignature)
 	if err != nil {
 		log.Println("malformed signature: could not decode hex")
-		return false
+		return nil
 	}
 
 	var hasher func() hash.Hash
@@ -82,31 +115,89 @@ func verifyWebhook(r *http.Request, requestBody []byte, hmacKeys [][]byte) bool 
 		hasher = sha512.New
 	default:
 		log.Println("unknown signature algorithm", method)
-		return false
+		return nil
 	}
 
 	timestamp, err := getCoolHeader("Twitch-Eventsub-Message-Timestamp", r)
 	if err != nil {
 		log.Println(err)
-		return false
+		return nil
 	}
 
 	msgId, err := getCoolHeader("Twitch-Eventsub-Message-Id", r)
 	if err != nil {
 		log.Println(err)
-		return false
+		return nil
 	}
 	for _, hmacKey := range hmacKeys {
-		calculatedHMAC := hmac.New(hasher, hmacKey)
+		calculatedHMAC := hmac.New(hasher, hmacKey.secret)
 		calculatedHMAC.Write([]byte(msgId))
 		calculatedHMAC.Write([]byte(timestamp))
 		calculatedHMAC.Write(requestBody)
 		expectedMAC := calculatedHMAC.Sum(nil)
 		if hmac.Equal(expectedMAC, signature) {
-			return true
+			return hmacKey.permissions
 		}
 	}
-	return false
+	return nil
+}
+
+func lightsReward(params string) {
+	number, err := strconv.ParseUint(params, 10, 64)
+	if err != nil {
+		hasher := crc32.NewIEEE()
+		hasher.Write([]byte(params))
+		number = uint64(hasher.Sum32())
+	}
+	whichBulb := (number / 65535) % 2
+	bulb := []*golifx.Bulb{bedBulb, ceilingBulb}[whichBulb]
+	hue := number % 65535
+	col := &golifx.HSBK{
+		Hue:        uint16(hue),
+		Saturation: 65535,
+		Brightness: 65535,
+		Kelvin:     3200,
+	}
+	log.Printf("setting bulb %d to %d", whichBulb, hue)
+	bulb.SetColorState(col, 1)
+}
+
+func endStreamReward() {
+	log.Print("killing stream")
+	cmd := exec.Command("killall", "obs")
+	cmd.Run()
+}
+
+func silenceMeReward() {
+	log.Print("ur muted")
+	cmd := exec.Command("./silencethot.sh")
+	go cmd.Run()
+}
+
+func premiumReward() {
+	chance := rand.Intn(10)
+	sound := "woof.mp3"
+	if chance == 5 {
+		sound = "bark.mp3"
+	}
+	cmd := exec.Command("play", sound)
+	cmd.Env = os.Environ()
+	cmd.Env = append(cmd.Env, "AUDIODEV=hw:1,0")
+	go cmd.Run()
+}
+
+func scrolloReward(params string) {
+	f, err := os.Create("scrollo.txt")
+	if err != nil {
+		log.Printf("failed to create file: %s", err)
+		return
+	}
+	defer f.Close()
+	f.WriteString(fmt.Sprintf(" %.256s ✨✨✨ ", params))
+}
+
+func unknownReward(reward string) {
+	log.Printf("request for unknown reward %s", reward)
 }
 
 func handleWebhook(w http.ResponseWriter, r *http.Request) {
@@ -116,13 +207,15 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hmacKeys := [][]byte{[]byte(os.Getenv("dom_secret")), []byte(os.Getenv("sub_secret"))}
-	if !verifyWebhook(r, requestBody, hmacKeys) {
+	domKey := hmacKey{[]byte(os.Getenv("dom_secret")), []reward{lights, scrollo}}
+	subKey := hmacKey{[]byte(os.Getenv("sub_secret")), []reward{lights, endStream, silenceMe, premium, scrollo, unknown}}
+	hmacKeys := []hmacKey{domKey, subKey}
+	permissions := verifyWebhook(r, requestBody, hmacKeys)
+	if permissions == nil {
 		log.Println("failed to verify signature")
 		w.Write([]byte("you're my good puppy\n"))
 		return
 	}
-
 	msgType, err := getCoolHeader("Twitch-Eventsub-Message-Type", r)
 	if err != nil {
 		log.Println(err)
@@ -141,52 +234,32 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if msgType == "notification" {
-		reward := payload.Event.Reward.Title
+		reward := rewardFromString(payload.Event.Reward.Title)
 		params := payload.Event.UserInput
-		if reward == "lights" {
-			number, err := strconv.ParseUint(params, 10, 64)
-			if err != nil {
-				hasher := crc32.NewIEEE()
-				hasher.Write([]byte(params))
-				number = uint64(hasher.Sum32())
+		rewardInPermissions := false
+		for _, allowed := range permissions {
+			if reward == allowed {
+				rewardInPermissions = true
+				break
 			}
-			whichBulb := (number / 65535) % 2
-			bulb := []*golifx.Bulb{bedBulb, ceilingBulb}[whichBulb]
-			hue := number % 65535
-			col := &golifx.HSBK{
-				Hue:        uint16(hue),
-				Saturation: 65535,
-				Brightness: 65535,
-				Kelvin:     3200,
-			}
-			log.Printf("setting bulb %d to %d", whichBulb, hue)
-			bulb.SetColorState(col, 1)
-		} else if reward == "end the stream" {
-			log.Print("killing stream")
-			cmd := exec.Command("killall", "obs")
-			cmd.Run()
-		} else if reward == "silence me" {
-			log.Print("ur muted")
-			cmd := exec.Command("./silencethot.sh")
-			go cmd.Run()
-		} else if reward == "SimpBucks Premium" {
-			chance := rand.Intn(10)
-			sound := "woof.mp3"
-			if chance == 5 {
-				sound = "bark.mp3"
-			}
-			cmd := exec.Command("play", sound)
-			cmd.Env = os.Environ()
-			cmd.Env = append(cmd.Env, "AUDIODEV=hw:1,0")
-			go cmd.Run()
-		} else if reward == "scrollo" {
-			f, err := os.Create("scrollo.txt")
-			if err != nil {
-				log.Printf("failed to create file: %s", err)
-				return
-			}
-			defer f.Close()
-			f.WriteString(fmt.Sprintf(" %.256s ✨✨✨ ", params))
+		}
+		if !rewardInPermissions {
+			log.Print("reward requested not in authorised rewards")
+			return
+		}
+		switch reward {
+		case lights:
+			lightsReward(params)
+		case endStream:
+			endStreamReward()
+		case silenceMe:
+			silenceMeReward()
+		case premium:
+			premiumReward()
+		case scrollo:
+			scrolloReward(params)
+		case unknown:
+			unknownReward(payload.Event.Reward.Title)
 		}
 		return
 	}
