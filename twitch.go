@@ -250,23 +250,27 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	log.Println("finding bulbs")
-	bulbs, err := golifx.LookupBulbs()
-	if err != nil {
-		log.Fatalf("failed to find bulbs! %s", err)
-		return
-	}
-	for _, bulb := range bulbs {
-		mac := bulb.MacAddress()
-		if mac == "d0:73:d5:64:76:ac" {
-			log.Println("found ceiling bulb")
-			ceilingBulb = bulb
-		} else if mac == "d0:73:d5:66:d5:ec" {
-			log.Println("found bed bulb")
-			bedBulb = bulb
+	for i := 0; i < 3; i++ {
+		bulbs, err := golifx.LookupBulbs()
+		if err != nil {
+			log.Fatalf("failed to find bulbs! %s", err)
+			return
+		}
+		for _, bulb := range bulbs {
+			mac := bulb.MacAddress()
+			if mac == "d0:73:d5:64:76:ac" {
+				ceilingBulb = bulb
+			} else if mac == "d0:73:d5:66:d5:ec" {
+				bedBulb = bulb
+			}
+		}
+		if ceilingBulb != nil && bedBulb != nil {
+			break
 		}
 	}
+
 	if ceilingBulb == nil || bedBulb == nil {
-		log.Fatalf("missing bulb(s). bulbs: %s %s", ceilingBulb, bedBulb)
+		log.Fatalf("missing bulb(s)")
 	}
 
 	log.Println("starting server")
