@@ -189,13 +189,13 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	domKey := hmacKey{[]byte(os.Getenv("dom_secret")), []reward{lights, scrollo}}
+	domKey := hmacKey{[]byte(os.Getenv("dom_secret")), []reward{lights, scrollo, unknown}}
 	subKey := hmacKey{[]byte(os.Getenv("sub_secret")), []reward{lights, endStream, silenceMe, premium, scrollo, unknown}}
 	hmacKeys := []hmacKey{domKey, subKey}
 	permissions := verifyWebhook(r, requestBody, hmacKeys)
 	if permissions == nil {
 		log.Println("failed to verify signature")
-		w.Write([]byte("you're my good puppy\n"))
+		w.Write([]byte("hi cutie!"))
 		return
 	}
 	msgType, err := getCoolHeader("Twitch-Eventsub-Message-Type", r)
