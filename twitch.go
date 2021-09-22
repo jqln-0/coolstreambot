@@ -58,6 +58,8 @@ func rewardFromString(s string) reward {
 		return premium
 	case "scrollo":
 		return scrollo
+	case "Play a YouTube clip (audio only)":
+		return youtube
 	default:
 		return unknown
 	}
@@ -178,6 +180,11 @@ func scrolloReward(params string) {
 	f.WriteString(fmt.Sprintf(" %.256s ✨✨✨ ", params))
 }
 
+func playYoutubeReward(params string) {
+	cmd := exec.Command("./play_yt.sh", params)
+	cmd.Run()
+}
+
 func unknownReward(reward string) {
 	log.Printf("request for unknown reward %s", reward)
 }
@@ -240,6 +247,8 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 			premiumReward()
 		case scrollo:
 			scrolloReward(params)
+		case youtube:
+			playYoutubeReward(params)
 		case unknown:
 			unknownReward(payload.Event.Reward.Title)
 		}
