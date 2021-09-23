@@ -193,7 +193,9 @@ func premiumReward() {
 	}
 	cmd := exec.Command("play", sound)
 	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, "AUDIODEV=hw:1,0")
+	// FIXME: Make this configurable via a flag.
+	// For Pokemon Emerald, the default audio device is correct.
+	//cmd.Env = append(cmd.Env, "AUDIODEV=hw:1,0")
 	go cmd.Run()
 }
 
