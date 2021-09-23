@@ -260,6 +260,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 			log.Print("reward requested not in authorised rewards")
 			return
 		}
+		log.Printf("fulfilling reward %s", payload.Event.Reward.Title)
 		switch reward {
 		case lights:
 			lightsReward(params)
