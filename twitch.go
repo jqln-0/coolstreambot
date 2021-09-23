@@ -68,7 +68,36 @@ type hmacKey struct {
 	permissions []reward
 }
 
-var ceilingBulb, bedBulb *golifx.Bulb
+var knownBulbMacs = []string{
+	"d0:73:d5:64:76:ac", // ceiling bulb
+	//"d0:73:d5:66:d5:ec" // bed bulb (on loan to daniel)
+}
+var macToBulb = make(map[string]*golifx.Bulb)
+
+func findAllBulbs() {
+	for i := 0; i < 3; i++ {
+		foundBulbs, err := golifx.LookupBulbs()
+		if err != nil {
+			log.Fatalf("error finding bulbs! %s", err)
+			return
+		}
+		for _, foundBulb := range foundBulbs {
+			foundMac := foundBulb.MacAddress()
+			for _, mac := range knownBulbMacs {
+				if mac == foundMac {
+					macToBulb[mac] = foundBulb
+				}
+			}
+		}
+
+		if len(macToBulb) == len(knownBulbMacs) {
+			return
+		}
+	}
+
+	// FIXME: ideally we might print the names of the missing bulbs here. effrot.
+	log.Fatalf("missing bulb(s)! found %d, wanted %d", len(macToBulb), len(knownBulbMacs))
+}
 
 func getCoolHeader(name string, r *http.Request) (string, error) {
 	val, ok := r.Header[name]
@@ -131,8 +160,8 @@ func lightsReward(params string) {
 		hasher.Write([]byte(params))
 		number = uint64(hasher.Sum32())
 	}
-	whichBulb := (number / 65535) % 2
-	bulb := []*golifx.Bulb{bedBulb, ceilingBulb}[whichBulb]
+	whichBulb := (number / 65535) % uint64(len(knownBulbMacs))
+	bulb := macToBulb[knownBulbMacs[whichBulb]]
 	hue := number % 65535
 	col := &golifx.HSBK{
 		Hue:        uint16(hue),
@@ -250,29 +279,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	log.Println("finding bulbs")
-	for i := 0; i < 3; i++ {
-		bulbs, err := golifx.LookupBulbs()
-		if err != nil {
-			log.Fatalf("failed to find bulbs! %s", err)
-			return
-		}
-		for _, bulb := range bulbs {
-			mac := bulb.MacAddress()
-			if mac == "d0:73:d5:64:76:ac" {
-				ceilingBulb = bulb
-			} else if mac == "d0:73:d5:66:d5:ec" {
-				bedBulb = bulb
-			}
-		}
-		if ceilingBulb != nil && bedBulb != nil {
-			break
-		}
-	}
-
-	if ceilingBulb == nil || bedBulb == nil {
-		log.Fatalf("missing bulb(s)")
-	}
-
+	findAllBulbs()
 	log.Println("starting server")
 	http.HandleFunc("/webhook", handleWebhook)
 	log.Fatal(http.ListenAndServeTLS(":6969", "cert/config/live/cardassia.jacqueline.id.au/fullchain.pem", "cert/config/live/cardassia.jacqueline.id.au/privkey.pem", nil))
