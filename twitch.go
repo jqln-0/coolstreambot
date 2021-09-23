@@ -234,8 +234,17 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	domKey := hmacKey{[]byte(os.Getenv("dom_secret")), []reward{lights, scrollo, unknown}}
-	subKey := hmacKey{[]byte(os.Getenv("sub_secret")), []reward{lights, endStream, silenceMe, premium, scrollo, comrade, unknown}}
+	domKeySecret, ok := os.LookupEnv("dom_secret")
+	if !ok {
+		log.Fatal("missing dom_secret")
+	}
+	subKeySecret, ok := os.LookupEnv("sub_secret")
+	if !ok {
+		log.Fatal("missing sub_secret")
+	}
+
+	domKey := hmacKey{[]byte(domKeySecret), []reward{lights, scrollo, unknown}}
+	subKey := hmacKey{[]byte(subKeySecret), []reward{lights, endStream, silenceMe, premium, scrollo, comrade, unknown}}
 	hmacKeys := []hmacKey{domKey, subKey}
 	permissions := verifyWebhook(r.Header, requestBody, hmacKeys)
 	if permissions == nil {
