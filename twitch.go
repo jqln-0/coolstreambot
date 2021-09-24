@@ -17,7 +17,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
-
+	"regexp"
 	"github.com/2tvenom/golifx"
 )
 
@@ -43,6 +43,7 @@ const (
 	silenceMe
 	premium
 	scrollo
+	youtube
 	unknown
 )
 
@@ -181,7 +182,20 @@ func scrolloReward(params string) {
 }
 
 func playYoutubeReward(params string) {
-	cmd := exec.Command("./play_yt.sh", params)
+	var isValidID = regexp.MustCompile(`[a-zA-Z0-9_-]`).MatchString
+	url_args := strings.Split(params, "v=")[1] // Get the video ID arg from the rest of the URL
+	video_id := strings.Split(url_args, "&")[0] // Split out any other args from the URL, keeping only the video ID
+
+	if !(len(video_id)==11) {
+		log.Printf("video ID too long/short:",len(video_id))
+		return
+	}
+	if (!isValidID(video_id)) {
+		log.Printf("malformed video ID")
+		return
+	}
+
+	cmd := exec.Command("./play_yt.sh", video_id)
 	cmd.Run()
 }
 
