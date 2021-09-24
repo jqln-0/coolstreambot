@@ -43,6 +43,7 @@ const (
 	silenceMe
 	premium
 	scrollo
+	comrade
 	unknown
 )
 const (
@@ -64,6 +65,8 @@ func rewardFromString(s string) reward {
 		return premium
 	case "scrollo":
 		return scrollo
+	case "comrade l'egg"
+		return comrade
 	default:
 		return unknown
 	}
@@ -212,7 +215,12 @@ func scrolloReward(params string) {
 		return
 	}
 	defer f.Close()
-	f.WriteString(fmt.Sprintf(" %.256s ✨✨✨ ", params))
+	f.WriteString(fmt.Sprintf(" %.256s ✨✨✨ ", strings.ToValidUTF8(params, "⚠️ nice try, puppy⚠️ ")))
+}
+
+func premiumReward() {
+	cmd := exec.Command("play", "song.mp3")
+	go cmd.Run()
 }
 
 func unknownReward(reward string) {
@@ -227,12 +235,12 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	domKey := hmacKey{[]byte(os.Getenv("dom_secret")), []reward{lights, scrollo, unknown}}
-	subKey := hmacKey{[]byte(os.Getenv("sub_secret")), []reward{lights, endStream, silenceMe, premium, scrollo, unknown}}
+	subKey := hmacKey{[]byte(os.Getenv("sub_secret")), []reward{lights, endStream, silenceMe, premium, scrollo, comrade, unknown}}
 	hmacKeys := []hmacKey{domKey, subKey}
 	permissions := verifyWebhook(r.Header, requestBody, hmacKeys)
 	if permissions == nil {
 		log.Println("failed to verify signature")
-		w.Write([]byte("hi cutie!"))
+		w.Write([]byte("it's something different tonight, puppy!"))
 		return
 	}
 	msgType, err := getCoolHeader(msgTypeHeader, r.Header)
