@@ -1,5 +1,7 @@
 keys
 cert/*
+vendor/*
 woof.mp3
 bark.mp3
 scrollo.txt
+song.mp3
