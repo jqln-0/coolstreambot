@@ -218,7 +218,7 @@ func scrolloReward(params string) {
 	f.WriteString(fmt.Sprintf(" %.256s ✨✨✨ ", strings.ToValidUTF8(params, "⚠️ nice try, puppy⚠️ ")))
 }
 
-func premiumReward() {
+func comradeReward() {
 	cmd := exec.Command("play", "song.mp3")
 	go cmd.Run()
 }
@@ -284,6 +284,8 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 			silenceMeReward()
 		case premium:
 			premiumReward()
+		case comrade:
+			comradeReward()
 		case scrollo:
 			scrolloReward(params)
 		case unknown:
