@@ -65,7 +65,7 @@ func rewardFromString(s string) reward {
 		return premium
 	case "scrollo":
 		return scrollo
-	case "comrade l'egg"
+	case "comrade l'egg":
 		return comrade
 	default:
 		return unknown
