@@ -54,6 +54,8 @@ const (
 	msgTypeHeader   = "Twitch-Eventsub-Message-Type"
 )
 
+var isValidVideoID = regexp.MustCompile(`[a-zA-Z0-9_-]`).MatchString
+
 func rewardFromString(s string) reward {
 	switch s {
 	case "lights":
@@ -227,15 +229,14 @@ func comradeReward() {
 }
 
 func playYoutubeReward(params string) {
-	var isValidID = regexp.MustCompile(`[a-zA-Z0-9_-]`).MatchString
 	url_args := strings.Split(params, "v=")[1] // Get the video ID arg from the rest of the URL
 	video_id := strings.Split(url_args, "&")[0] // Split out any other args from the URL, keeping only the video ID
 
-	if !(len(video_id)==11) {
+	if (len(video_id) != 11) {
 		log.Printf("video ID too long/short:",len(video_id))
 		return
 	}
-	if (!isValidID(video_id)) {
+	if (!isValidVideoID(video_id)) {
 		log.Printf("malformed video ID")
 		return
 	}
