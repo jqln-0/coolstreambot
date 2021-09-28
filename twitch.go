@@ -17,7 +17,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
-
+	"regexp"
 	"github.com/2tvenom/golifx"
 )
 
@@ -44,6 +44,7 @@ const (
 	premium
 	scrollo
 	comrade
+  youtube
 	unknown
 )
 const (
@@ -52,6 +53,8 @@ const (
 	msgIdHeader     = "Twitch-Eventsub-Message-Id"
 	msgTypeHeader   = "Twitch-Eventsub-Message-Type"
 )
+
+var isValidVideoID = regexp.MustCompile(`[a-zA-Z0-9_-]`).MatchString
 
 func rewardFromString(s string) reward {
 	switch s {
@@ -67,6 +70,8 @@ func rewardFromString(s string) reward {
 		return scrollo
 	case "comrade l'egg":
 		return comrade
+	case "Play a YouTube clip (audio only)":
+		return youtube
 	default:
 		return unknown
 	}
@@ -223,6 +228,23 @@ func comradeReward() {
 	go cmd.Run()
 }
 
+func playYoutubeReward(params string) {
+	url_args := strings.Split(params, "v=")[1] // Get the video ID arg from the rest of the URL
+	video_id := strings.Split(url_args, "&")[0] // Split out any other args from the URL, keeping only the video ID
+
+	if (len(video_id) != 11) {
+		log.Printf("video ID too long/short:",len(video_id))
+		return
+	}
+	if (!isValidVideoID(video_id)) {
+		log.Printf("malformed video ID")
+		return
+	}
+
+	cmd := exec.Command("./play_yt.sh", video_id)
+	cmd.Run()
+}
+
 func unknownReward(reward string) {
 	log.Printf("request for unknown reward %s", reward)
 }
@@ -297,6 +319,8 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 			comradeReward()
 		case scrollo:
 			scrolloReward(params)
+		case youtube:
+			playYoutubeReward(params)
 		case unknown:
 			unknownReward(payload.Event.Reward.Title)
 		}
